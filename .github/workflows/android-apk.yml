@@ -44,15 +44,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Configurar ferramentas Android
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar Android SDK
+      - name: Usar Android SDK do executor e instalar plataforma 35
         shell: bash
         run: |
           set -euo pipefail
-          echo "Instalação SDK Android" > ci-etapa.txt
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 2>&1 | tee ci-ultimo-log.txt
+          echo "Instalação SDK Android via sdkmanager preinstalado" > ci-etapa.txt
+          {
+            echo "ANDROID_HOME=${ANDROID_HOME:-nao_configurado}"
+            command -v sdkmanager
+            sdkmanager --sdk_root="$ANDROID_HOME" 'platforms;android-35' 'build-tools;35.0.0'
+          } 2>&1 | tee ci-ultimo-log.txt
 
       - name: Configurar Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
