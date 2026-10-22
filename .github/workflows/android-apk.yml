@@ -8,39 +8,94 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      issues: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Extrair os arquivos do projeto
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Extrair projeto Android
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f Disc_Duel_Frisbee_Mesa_LAN_Android_Projeto.zip ]; then
-            mkdir -p .unpacked
-            unzip -q -o Disc_Duel_Frisbee_Mesa_LAN_Android_Projeto.zip -d .unpacked
-            cp -a .unpacked/FrisbeeMesaLAN/. .
-          elif [ -f DiscDuel_GitHub_Pronto_Para_Enviar.zip ]; then
-            unzip -q -o DiscDuel_GitHub_Pronto_Para_Enviar.zip -d .
-          fi
-          test -f settings.gradle
-          test -f app/build.gradle
-          test -f tests/test-network.sh
-      - uses: actions/setup-java@v4
+          echo "Extração do projeto Android" > ci-etapa.txt
+          {
+            echo "Arquivos disponíveis:"
+            ls -lah
+            if [ -f Disc_Duel_Frisbee_Mesa_LAN_Android_Projeto.zip ]; then
+              echo "Extraindo Disc_Duel_Frisbee_Mesa_LAN_Android_Projeto.zip"
+              unzip -o -q Disc_Duel_Frisbee_Mesa_LAN_Android_Projeto.zip -d .pacote
+              cp -a .pacote/FrisbeeMesaLAN/. .
+            elif [ -f DiscDuel_GitHub_Pronto_Para_Enviar.zip ]; then
+              echo "Extraindo DiscDuel_GitHub_Pronto_Para_Enviar.zip"
+              unzip -o -q DiscDuel_GitHub_Pronto_Para_Enviar.zip -d .
+            else
+              echo "ERRO: Nenhum ZIP suportado foi encontrado."
+              exit 1
+            fi
+            ls -lah
+            test -f settings.gradle
+            test -f app/build.gradle
+            test -f tests/test-network.sh
+          } 2>&1 | tee ci-ultimo-log.txt
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Instalar Android SDK 35
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Configurar ferramentas Android
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Instalação SDK Android" > ci-etapa.txt
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 2>&1 | tee ci-ultimo-log.txt
+
+      - name: Configurar Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Teste de conexão TCP local
-        run: sh tests/test-network.sh
-      - name: Compilar APK instalável
-        run: gradle --no-daemon assembleDebug
-      - uses: actions/upload-artifact@v4
+
+      - name: Testar rede TCP
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Teste de rede TCP" > ci-etapa.txt
+          sh tests/test-network.sh 2>&1 | tee ci-ultimo-log.txt
+
+      - name: Compilar APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Compilação Gradle assembleDebug" > ci-etapa.txt
+          gradle --no-daemon --stacktrace assembleDebug 2>&1 | tee ci-ultimo-log.txt
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
         with:
           name: DiscDuel-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Registrar diagnóstico se falhar
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## Diagnóstico automático — Disc Duel"
+            echo
+            echo "Execução: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "Etapa registrada: $(cat ci-etapa.txt 2>/dev/null || echo 'Falha anterior à extração')"
+            echo
+            echo '~~~'
+            tail -n 95 ci-ultimo-log.txt 2>/dev/null || echo "Falha antes de gravar logs da etapa."
+            echo '~~~'
+          } > ci-diagnostico.md
+          gh issue create --title "Diagnóstico do APK — execução #$GITHUB_RUN_NUMBER" --body-file ci-diagnostico.md || true
