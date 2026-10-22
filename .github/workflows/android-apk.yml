@@ -1,0 +1,40 @@
+name: Gerar APK Android
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extrair pacote do projeto (se enviado em ZIP)
+        shell: bash
+        run: |
+          if [ -f DiscDuel_GitHub_Pronto_Para_Enviar.zip ]; then
+            unzip -o DiscDuel_GitHub_Pronto_Para_Enviar.zip -d .
+          fi
+          test -f settings.gradle
+          test -f app/build.gradle
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Instalar Android SDK 35
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Teste de TCP local
+        run: sh tests/test-network.sh
+      - name: Compilar APK
+        run: gradle --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DiscDuel-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
