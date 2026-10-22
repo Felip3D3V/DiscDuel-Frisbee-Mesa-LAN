@@ -10,14 +10,20 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Extrair pacote do projeto (se enviado em ZIP)
+      - name: Extrair os arquivos do projeto
         shell: bash
         run: |
-          if [ -f DiscDuel_GitHub_Pronto_Para_Enviar.zip ]; then
-            unzip -o DiscDuel_GitHub_Pronto_Para_Enviar.zip -d .
+          set -euo pipefail
+          if [ -f Disc_Duel_Frisbee_Mesa_LAN_Android_Projeto.zip ]; then
+            mkdir -p .unpacked
+            unzip -q -o Disc_Duel_Frisbee_Mesa_LAN_Android_Projeto.zip -d .unpacked
+            cp -a .unpacked/FrisbeeMesaLAN/. .
+          elif [ -f DiscDuel_GitHub_Pronto_Para_Enviar.zip ]; then
+            unzip -q -o DiscDuel_GitHub_Pronto_Para_Enviar.zip -d .
           fi
           test -f settings.gradle
           test -f app/build.gradle
+          test -f tests/test-network.sh
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -28,9 +34,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Teste de TCP local
+      - name: Teste de conexão TCP local
         run: sh tests/test-network.sh
-      - name: Compilar APK
+      - name: Compilar APK instalável
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
